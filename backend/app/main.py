@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from starlette.concurrency import run_in_threadpool
 
-from app import auth, rbac, reset, seed
+from app import auth, rbac, reset, seed, store
 from app.errors import error_response, register_handlers
 from app.rate_limit import RateLimitMiddleware
 
@@ -23,6 +23,7 @@ app.add_middleware(RateLimitMiddleware)
 app.include_router(reset.router)
 app.include_router(auth.router)
 app.include_router(rbac.router)
+app.include_router(store.router)
 
 
 @app.middleware("http")

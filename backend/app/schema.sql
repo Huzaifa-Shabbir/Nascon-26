@@ -75,3 +75,21 @@ CREATE TABLE IF NOT EXISTS discount_codes (
     code    TEXT PRIMARY KEY,
     percent INTEGER NOT NULL
 );
+
+-- Completed checkouts for idempotent replay (spec 5.12).
+CREATE TABLE IF NOT EXISTS orders (
+    order_id      TEXT PRIMARY KEY,
+    request_hash  TEXT NOT NULL,
+    request_body  JSONB NOT NULL,
+    response_body JSONB NOT NULL,
+    status        TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Optional durable mirror of domain events also published to Redis Streams.
+CREATE TABLE IF NOT EXISTS domain_events (
+    event_id   BIGSERIAL PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    payload    JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
