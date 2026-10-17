@@ -291,6 +291,17 @@ def test_esports_series_decided(client):
     assert r.json()["error"]["code"] == "SERIES_ALREADY_DECIDED"
 
 
+def test_esports_series_decided_blocks_losing_team(client):
+    """After 2–0, further scores from either side → SERIES_ALREADY_DECIDED."""
+    init_match(client, match_id="e2", sport_id="esports", home="a", away="b")
+    start(client, "e2", "se2")
+    assert score(client, "e2", "e2-r1", "a", "round_win").status_code == 201
+    assert score(client, "e2", "e2-r2", "a", "round_win").status_code == 201
+    r = score(client, "e2", "e2-r3", "b", "round_win")
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "SERIES_ALREADY_DECIDED"
+
+
 def test_league_fixture_creates_match_stream(client):
     r = client.post(
         "/audit/v1/leagues",

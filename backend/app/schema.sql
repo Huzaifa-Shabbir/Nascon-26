@@ -117,3 +117,76 @@ CREATE TABLE IF NOT EXISTS match_events (
 );
 
 CREATE INDEX IF NOT EXISTS match_events_match_seq ON match_events (match_id, sequence);
+
+-- Roster scenarios (§5.11). Replaced wholesale by POST /roster/setup per league_id.
+CREATE TABLE IF NOT EXISTS roster_leagues (
+    league_id          TEXT PRIMARY KEY,
+    tenant_id          TEXT NOT NULL,
+    sport_id           TEXT NOT NULL,
+    transfer_window    JSONB NOT NULL,
+    max_squad_size     INTEGER NOT NULL,
+    required_positions JSONB NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS roster_squads (
+    squad_id  TEXT NOT NULL,
+    league_id TEXT NOT NULL REFERENCES roster_leagues (league_id) ON DELETE CASCADE,
+    club_id   TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    name      TEXT NOT NULL,
+    PRIMARY KEY (league_id, squad_id)
+);
+
+CREATE TABLE IF NOT EXISTS roster_players (
+    player_id          TEXT NOT NULL,
+    league_id          TEXT NOT NULL REFERENCES roster_leagues (league_id) ON DELETE CASCADE,
+    name               TEXT NOT NULL,
+    position           TEXT NOT NULL,
+    squad_id           TEXT,
+    parent_squad_id    TEXT,
+    role               TEXT NOT NULL,
+    registration_type  TEXT,
+    start_date         TEXT,
+    loan_end_date      TEXT,
+    initial_squad_id   TEXT,
+    PRIMARY KEY (league_id, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS roster_live_matches (
+    league_id      TEXT NOT NULL REFERENCES roster_leagues (league_id) ON DELETE CASCADE,
+    match_id       TEXT NOT NULL,
+    home_squad_id  TEXT NOT NULL,
+    away_squad_id  TEXT NOT NULL,
+    PRIMARY KEY (league_id, match_id)
+);
+
+CREATE TABLE IF NOT EXISTS roster_audit (
+    audit_id       TEXT PRIMARY KEY,
+    player_id      TEXT NOT NULL,
+    league_id      TEXT NOT NULL,
+    action         TEXT NOT NULL,
+    from_squad_id  TEXT,
+    to_squad_id    TEXT,
+    effective_date TEXT NOT NULL,
+    state          TEXT NOT NULL,
+    who            TEXT NOT NULL,
+    when_ts        TEXT NOT NULL,
+    why            TEXT NOT NULL,
+    sequence       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS roster_audit_player ON roster_audit (player_id, sequence);
+
+CREATE TABLE IF NOT EXISTS roster_requests (
+    request_id     TEXT PRIMARY KEY,
+    request_hash   TEXT NOT NULL,
+    response_body  JSONB NOT NULL
+);
+
+-- Offline sync (§5.14): processed (device_id, action_id) pairs.
+CREATE TABLE IF NOT EXISTS offline_actions (
+    device_id      TEXT NOT NULL,
+    action_id      TEXT NOT NULL,
+    result_body    JSONB NOT NULL,
+    PRIMARY KEY (device_id, action_id)
+);

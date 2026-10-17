@@ -576,7 +576,10 @@ def _enforce_transition(
                     {"team_id": team},
                 )
         elif model == "round":
-            if _series_decided(sport, proj["_scores"][team]):
+            # Series is decided once *either* side reaches the win threshold.
+            if any(
+                _series_decided(sport, proj["_scores"][t]) for t in teams
+            ):
                 raise ApiError(
                     409, "SERIES_ALREADY_DECIDED",
                     "Series already decided.",

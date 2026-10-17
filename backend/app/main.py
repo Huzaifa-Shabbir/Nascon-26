@@ -3,7 +3,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from starlette.concurrency import run_in_threadpool
 
-from app import auth, leagues, rbac, reset, scoring, seed, store
+from app import (
+    auth,
+    leagues,
+    mobile_api,
+    offline_sync,
+    rbac,
+    reset,
+    roster,
+    scoring,
+    seed,
+    sports,
+    standings,
+    store,
+)
 from app.errors import error_response, register_handlers
 from app.fixtures import router as fixtures_router
 from app.rate_limit import RateLimitMiddleware
@@ -28,6 +41,11 @@ app.include_router(store.router)
 app.include_router(fixtures_router)
 app.include_router(leagues.router)
 app.include_router(scoring.router)
+app.include_router(sports.router)
+app.include_router(standings.router)
+app.include_router(roster.router)
+app.include_router(offline_sync.router)
+app.include_router(mobile_api.router)
 
 
 @app.middleware("http")
