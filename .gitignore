@@ -42,3 +42,7 @@ mobile/**/ios/Pods/
 *.iml
 .DS_Store
 Thumbs.db
+
+# Local AI design reviews and generated screenshots
+.impeccable/
+mobile/**/test/goldens/
