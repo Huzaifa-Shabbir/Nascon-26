@@ -5,6 +5,7 @@
 *CREDENTIALS*
 *credentials*
 !.env.example
+!mobile/mobile/.env.example
 *.pem
 *.key
 *.jks

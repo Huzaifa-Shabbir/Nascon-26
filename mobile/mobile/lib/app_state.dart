@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
 import 'api.dart';
+import 'config.dart';
 import 'db.dart';
 import 'sync.dart';
 
@@ -40,7 +41,7 @@ class AppState extends ChangeNotifier {
   String? leagueId;
   String? playerId;
   String deviceId = '';
-  String baseUrl = 'http://10.0.2.2:8080';
+  String baseUrl = defaultBackendUrl();
   bool ready = false;
   int pendingCount = 0;
   List<Map<String, dynamic>> lastSyncResults = [];
@@ -64,7 +65,7 @@ class AppState extends ChangeNotifier {
         logout(reason: 'session_expired');
       }
     };
-    baseUrl = await db.getKv('base_url') ?? 'http://10.0.2.2:8080';
+    baseUrl = await db.getKv('base_url') ?? defaultBackendUrl();
     api.baseUrl = baseUrl;
     deviceId = await db.getKv('device_id') ?? '';
     if (deviceId.isEmpty) {
@@ -280,6 +281,8 @@ class AppState extends ChangeNotifier {
       await api.registerLeague({
         'league_id': demoLeagueId,
         'sport_id': 'football',
+        // Required for tenant-scoped GET /api/v1/matches (non–super-admin).
+        'tenant_id': tenantId ?? 'tenant-alpha',
         'teams': ['t1', 't2', 't3', 't4'],
         'fixtures': [
           {'match_id': 'm-demo-1', 'home': 't1', 'away': 't2'},

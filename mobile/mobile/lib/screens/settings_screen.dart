@@ -33,7 +33,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             controller: _url,
             decoration: const InputDecoration(
               hintText: 'http://10.0.2.2:8080',
-              helperText: 'Emulator: 10.0.2.2:8080 · Device: laptop LAN IP:8080',
+              helperText:
+                  'Default from .env / .env.example (BACKEND_URL). Emulator: 10.0.2.2 · Phone: laptop LAN IP',
               border: OutlineInputBorder(),
             ),
           ),

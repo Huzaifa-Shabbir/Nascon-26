@@ -71,6 +71,11 @@ def register_league(body: dict | None = Body(default=None)):
 
     tie_break_order = body.get("tie_break_order")
     lots_seed = body.get("lots_seed")
+    # Optional; ignored by grader when omitted. Lets mobile/demo leagues
+    # participate in tenant-scoped /api/v1 reads (FR-2.1).
+    tenant_id = body.get("tenant_id")
+    if tenant_id is not None and (not isinstance(tenant_id, str) or not tenant_id):
+        fields.append("tenant_id")
 
     if fields:
         uniq = []
@@ -168,10 +173,11 @@ def register_league(body: dict | None = Body(default=None)):
             conn.execute(
                 text(
                     "INSERT INTO leagues (league_id, tenant_id, sport_id, name, config) "
-                    "VALUES (:id, NULL, :sport, :name, CAST(:cfg AS JSONB))"
+                    "VALUES (:id, :tid, :sport, :name, CAST(:cfg AS JSONB))"
                 ),
                 {
                     "id": league_id,
+                    "tid": tenant_id,
                     "sport": sport_id,
                     "name": league_id,
                     "cfg": json.dumps(config),

@@ -93,6 +93,7 @@ String friendlyError(Object e) {
 class ApiClient {
   ApiClient({String? baseUrl}) : baseUrl = baseUrl ?? 'http://10.0.2.2:8080';
 
+  /// Mutable; set from AppState after `.env` / Settings load.
   String baseUrl;
   String? token;
 
