@@ -49,8 +49,8 @@ Commit small and often. Never leave `main` broken near a window boundary.
   - need no manual steps, no pre-created volumes, and nothing installed on the
     host but Docker;
   - keep running with **no Internet** once built.
-- **Nothing may depend on the team's LAN lab** (IPs, credentials or containers).
-  Services reach each other by compose service name only.
+- **Nothing may depend on another machine.** Everything runs from our own
+  `docker compose up`, and services reach each other by compose service name only.
 
 ## 2. Required repo layout
 
@@ -422,15 +422,3 @@ Authorization is evaluated before anything else in the request.
 - [ ] `COVERAGE.json`, `TRACEABILITY.md`, `README.md`, `.env.example` and the APK
   are committed.
 - [ ] Last push before 15:05:00.
-
-## 10. Team LAN lab (dev convenience only)
-
-A teammate's laptop runs shared Postgres, Redis, MinIO and other services at
-`10.27.87.243`. The address comes from DHCP and **can change**. To use it, your
-laptop must be on the same hotspot (subnet `10.27.87.0/24`).
-
-It is optional. Running our own `docker compose up` locally is the more faithful
-test.
-
-Never commit the lab IP or credentials. Never touch the lab's containers. Lab
-details are in the infra handoff; ask a human for credentials.

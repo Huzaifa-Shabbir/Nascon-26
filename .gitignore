@@ -10,7 +10,6 @@
 *.jks
 *.keystore
 key.properties
-service-lab-state.json
 
 # Python
 __pycache__/

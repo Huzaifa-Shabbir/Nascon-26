@@ -1,12 +1,24 @@
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
 
-from app import db
+from fastapi import FastAPI, Request
+from starlette.concurrency import run_in_threadpool
+
+from app import reset, seed
 from app.errors import error_response, register_handlers
 
 MAX_BODY_BYTES = 1024 * 1024
 
-app = FastAPI(title="NaSCon '26 League Platform")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Create the schema and seed the baseline (spec 5.4/5.5). Non-fatal: /health retries.
+    await run_in_threadpool(seed.ensure_ready)
+    yield
+
+
+app = FastAPI(title="NaSCon '26 League Platform", lifespan=lifespan)
 register_handlers(app)
+app.include_router(reset.router)
 
 
 @app.middleware("http")
@@ -24,9 +36,9 @@ async def limit_body_size(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    # TODO(reset stage): also require that baseline seed data exists (spec 5.4).
-    if not db.db_reachable():
-        return error_response(503, "UNAVAILABLE", "Database is not reachable.")
+    # Spec 5.4: 200 only when the DB is reachable and the baseline is seeded.
+    if not seed.baseline_present():
+        return error_response(503, "UNAVAILABLE", "Database is not reachable or not seeded.")
     return {"status": "ok"}
 
 

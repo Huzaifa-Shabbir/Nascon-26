@@ -29,13 +29,22 @@ copy ..\.env.example ..\.env    # then fill in DAY1_SALT, DATABASE_URL, REDIS_UR
 .\.venv\Scripts\python -m uvicorn app.main:app --port 8080 --reload
 ```
 
-`DATABASE_URL`/`REDIS_URL` can point at the team LAN lab. Use your **own
-database** there: `/audit/v1/reset` wipes everything in the target DB.
+Point `DATABASE_URL`/`REDIS_URL` at your own local Postgres and Redis. Use a
+database you can lose: `/audit/v1/reset` wipes everything in the target DB.
 
 ## Tests
 
 ```bash
 ./run_tests.sh          # pytest + per-module coverage
+```
+
+DB-backed tests (e.g. `/audit/v1/reset`) **truncate every table**, so they run
+only when `TEST_DATABASE_URL` names a disposable database; otherwise they are
+skipped:
+
+```bash
+docker run -d --rm --name nascon-testdb -e POSTGRES_USER=t -e POSTGRES_PASSWORD=t -e POSTGRES_DB=t -p 55432:5432 postgres:16-alpine
+TEST_DATABASE_URL=postgresql://t:t@localhost:55432/t ./run_tests.sh
 ```
 
 ## Demo accounts

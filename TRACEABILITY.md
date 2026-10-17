@@ -16,4 +16,4 @@ Status: ✅ done · 🟡 partial · ⬜ not started.
 | NFR-3 | Concurrency-safe inventory | — | — | ⬜ |
 | NFR-4 | Offline tolerance (mobile + `/offline-sync`) | — | — | ⬜ |
 | NFR-5 | Security: rate limit, input validation, 413, JWT | `backend/app/main.py`, `backend/app/errors.py` | `tests/test_app_basics.py` | 🟡 413 + error body |
-| NFR-7 | Reproducible `docker compose up -d --build` | `docker-compose.yml`, `backend/Dockerfile` | — | 🟡 not yet run on clean machine |
+| NFR-7 | Reproducible `docker compose up -d --build`; baseline seed; `/health`; `/audit/v1/reset` | `docker-compose.yml`, `backend/Dockerfile`, `backend/app/schema.sql`, `backend/app/seed.py`, `backend/app/reset.py` | `tests/test_reset.py` | 🟡 reset + seed done; not yet run on a clean Ubuntu machine |

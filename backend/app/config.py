@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql+psycopg://nascon:nascon@localhost:5432/nascon"
 )
-# Accept plain postgresql:// URLs (as in the team lab file) and use psycopg 3.
+# Accept plain postgresql:// URLs and use psycopg 3.
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
