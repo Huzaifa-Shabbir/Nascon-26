@@ -93,3 +93,27 @@ CREATE TABLE IF NOT EXISTS domain_events (
     payload    JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Match streams (league fixtures or match_init). Status/outcome are derived from the log.
+CREATE TABLE IF NOT EXISTS matches (
+    match_id      TEXT PRIMARY KEY,
+    sport_id      TEXT NOT NULL,
+    league_id     TEXT,
+    home_team_id  TEXT NOT NULL,
+    away_team_id  TEXT NOT NULL
+);
+
+-- Append-only signed event log (spec §5.9). Never update/delete rows for corrections.
+CREATE TABLE IF NOT EXISTS match_events (
+    event_id      TEXT PRIMARY KEY,
+    match_id      TEXT NOT NULL REFERENCES matches (match_id),
+    type          TEXT NOT NULL,
+    payload       JSONB NOT NULL,
+    sequence      INTEGER NOT NULL,
+    signature     TEXT NOT NULL,
+    request_hash  TEXT NOT NULL,
+    response_body JSONB NOT NULL,
+    UNIQUE (match_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS match_events_match_seq ON match_events (match_id, sequence);
