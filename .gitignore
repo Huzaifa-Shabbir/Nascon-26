@@ -1,0 +1,41 @@
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.keystore
+key.properties
+service-lab-state.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+
+# Flutter / Dart
+mobile/**/.dart_tool/
+mobile/**/.flutter-plugins
+mobile/**/.flutter-plugins-dependencies
+mobile/**/build/
+mobile/**/.packages
+mobile/**/android/.gradle/
+mobile/**/android/local.properties
+mobile/**/ios/Pods/
+# The release APK is a required deliverable and IS committed:
+!mobile/release/app-release.apk
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
