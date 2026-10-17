@@ -7,7 +7,7 @@ Status: ✅ done · 🟡 partial · ⬜ not started.
 |---|---|---|---|---|
 | FR-1.1 | Multi-sport taxonomy, mystery sport, event-sourced scoring, signed compensations | `backend/app/signing.py` | `tests/test_signing.py` | 🟡 signatures only |
 | FR-1.2 | League & tournament setup | — | — | ⬜ |
-| FR-1.3 | Fixtures: round-robin, Swiss, single/double elimination; match state machine | — | — | ⬜ |
+| FR-1.3 | Fixtures: round-robin, Swiss, single/double elimination; match state machine | `backend/app/fixtures/` | `tests/test_fixtures.py` | ✅ four formats via `/audit/v1/fixtures` (pure compute); match state machine still open |
 | FR-1.4 | Standings, tie-breakers, H2H, qualification status | `backend/app/signing.py` (`lots_key`) | `tests/test_signing.py` | 🟡 draw-of-lots key only |
 | FR-2.1 | Club profiles & tenant isolation | `backend/app/rbac.py` (probe P6 tenant isolation) | `tests/test_rbac.py` | 🟡 RBAC isolation probes; club profile API not yet |
 | FR-2.2 | Roster, transfers, loans, audit trail | — | — | ⬜ |

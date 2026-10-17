@@ -5,6 +5,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app import auth, rbac, reset, seed, store
 from app.errors import error_response, register_handlers
+from app.fixtures import router as fixtures_router
 from app.rate_limit import RateLimitMiddleware
 
 MAX_BODY_BYTES = 1024 * 1024
@@ -24,6 +25,7 @@ app.include_router(reset.router)
 app.include_router(auth.router)
 app.include_router(rbac.router)
 app.include_router(store.router)
+app.include_router(fixtures_router)
 
 
 @app.middleware("http")
