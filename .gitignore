@@ -1,6 +1,9 @@
 # Secrets / env
 .env
 .env.*
+*.env
+*CREDENTIALS*
+*credentials*
 !.env.example
 *.pem
 *.key
