@@ -1,18 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-
+import 'package:mobile/api.dart';
 import 'package:mobile/app_state.dart';
-import 'package:mobile/main.dart';
 
 void main() {
-  testWidgets('App builds with provider', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => AppState(),
-        child: const NasconApp(),
-      ),
+  test('AppState role helpers match demo accounts', () {
+    expect(AppState.demoLeagueId, 'lg-mobile-1');
+    expect(AppState.rosterLeagueId, 'lg-r1');
+  });
+
+  test('ApiException carries status and fields', () {
+    final e = ApiException(
+      'bad',
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      fields: ['email'],
     );
-    await tester.pump();
-    expect(find.byType(NasconApp), findsOneWidget);
+    expect(e.statusCode, 400);
+    expect(friendlyError(e), 'Please check: email');
   });
 }

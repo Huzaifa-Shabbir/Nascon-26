@@ -20,24 +20,38 @@ class _StoreScreenState extends State<StoreScreen> {
   @override
   void initState() {
     super.initState();
-    final api = context.read<AppState>().api;
-    _catalogue = api.getCatalogue().then((c) async {
+    _load();
+  }
+
+  void _load() {
+    final app = context.read<AppState>();
+    final api = app.api;
+    _catalogue = api.getCatalogue(tenantId: app.tenantId ?? 'tenant-alpha').then((c) async {
+      final stock = <String, int>{};
       for (final p in (c['products'] as List? ?? [])) {
         if (p is! Map) continue;
         for (final v in (p['variants'] as List? ?? [])) {
           if (v is! Map) continue;
           final id = v['variant_id']?.toString();
           if (id == null) continue;
+          // Prefer live inventory endpoint; fall back to catalogue stock field.
           try {
             final inv = await api.getInventory(id);
-            _stock[id] = (inv['stock'] as num?)?.toInt() ?? 0;
+            stock[id] = (inv['stock'] as num?)?.toInt() ?? 0;
           } catch (_) {
-            _stock[id] = -1;
+            stock[id] = (v['stock'] as num?)?.toInt() ?? -1;
           }
         }
       }
+      if (mounted) setState(() => _stock = stock);
       return c;
     });
+  }
+
+  String _sizeOf(Map v) {
+    final attrs = v['attributes'];
+    if (attrs is Map && attrs['size'] != null) return attrs['size'].toString();
+    return v['size']?.toString() ?? '?';
   }
 
   String _pkr(int minor) => 'PKR ${(minor / 100).toStringAsFixed(2)}';
@@ -74,6 +88,7 @@ class _StoreScreenState extends State<StoreScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ReceiptScreen(receipt: result)),
       );
+      setState(_load);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -83,6 +98,12 @@ class _StoreScreenState extends State<StoreScreen> {
     } finally {
       if (mounted) setState(() => _checkingOut = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _discount.dispose();
+    super.dispose();
   }
 
   @override
@@ -107,7 +128,25 @@ class _StoreScreenState extends State<StoreScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text(friendlyError(snap.error!)));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(friendlyError(snap.error!), textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: () => setState(_load),
+                        child: const Text('Retry'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
           }
           final products = (snap.data?['products'] as List?) ?? [];
           return ListView(
@@ -122,36 +161,47 @@ class _StoreScreenState extends State<StoreScreen> {
                   const SizedBox(height: 8),
                   for (final v in (p['variants'] as List? ?? []))
                     if (v is Map)
-                      ListTile(
-                        minVerticalPadding: 16,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: Theme.of(context).dividerColor),
-                        ),
-                        title: Text(
-                          '${v['variant_id']} · size ${v['size'] ?? '?'}',
-                        ),
-                        subtitle: Text(
-                          '${_pkr((v['price_minor'] as num?)?.toInt() ?? 450000)}'
-                          '${_stock[v['variant_id']?.toString()] != null && _stock[v['variant_id']?.toString()]! >= 0 ? ' · stock ${_stock[v['variant_id']?.toString()]}' : ''}',
-                        ),
-                        trailing: SizedBox(
-                          height: 48,
-                          child: FilledButton(
-                            onPressed: () {
-                              app.addToCart(CartItem(
-                                variantId: v['variant_id'].toString(),
-                                name: '${p['name']} (${v['size']})',
-                                priceMinor: (v['price_minor'] as num?)?.toInt() ?? 450000,
-                              ));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Added to cart')),
-                              );
-                            },
-                            child: const Text('Add'),
+                      Builder(builder: (context) {
+                        final vid = v['variant_id']?.toString() ?? '';
+                        final size = _sizeOf(v);
+                        final price = (v['price_minor'] as num?)?.toInt() ?? 0;
+                        final stock = _stock[vid];
+                        final out = stock != null && stock == 0;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            minVerticalPadding: 16,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: Theme.of(context).dividerColor),
+                            ),
+                            title: Text('$vid · size $size'),
+                            subtitle: Text(
+                              '${_pkr(price)}'
+                              '${stock != null && stock >= 0 ? ' · stock $stock' : ''}'
+                              '${out ? ' · sold out' : ''}',
+                            ),
+                            trailing: SizedBox(
+                              height: 48,
+                              child: FilledButton(
+                                onPressed: out
+                                    ? null
+                                    : () {
+                                        app.addToCart(CartItem(
+                                          variantId: vid,
+                                          name: '${p['name']} ($size)',
+                                          priceMinor: price,
+                                        ));
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Added to cart')),
+                                        );
+                                      },
+                                child: const Text('Add'),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      }),
                   const SizedBox(height: 16),
                 ],
               if (products.isEmpty)
@@ -221,13 +271,13 @@ class ReceiptScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final orderId = (receipt['order_id'] ?? receipt['receipt']?['payload']?['order_id'] ?? '—').toString();
-    final payload = receipt['receipt'] is Map ? receipt['receipt']['payload'] : receipt['payload'];
-    final total = payload is Map
-        ? payload['total_minor'] ?? payload['amount_minor'] ?? payload['total']
-        : receipt['total_minor'];
-    final sig = receipt['receipt'] is Map ? receipt['receipt']['signature'] : receipt['signature'];
-    final hasPdf = (receipt['pdf_base64'] ?? receipt['receipt']?['pdf_base64']) != null;
+    final orderId = (receipt['order_id'] ?? '—').toString();
+    final receiptObj = receipt['receipt'] is Map ? receipt['receipt'] as Map : null;
+    final payload = receiptObj?['payload'] is Map ? receiptObj!['payload'] as Map : null;
+    final total = payload?['total_minor'] ?? receipt['total_minor'];
+    final sig = receiptObj?['signature'] ?? receipt['signature'];
+    final hasPdf = (receiptObj?['pdf_base64'] ?? receipt['pdf_base64']) != null;
+    final totalNum = total is num ? total.toInt() : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Receipt')),
@@ -238,16 +288,19 @@ class ReceiptScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Text('Order $orderId', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
-          if (total != null)
+          if (totalNum != null)
             Text(
-              'Total: PKR ${((total is num ? total : 450000) / 100).toStringAsFixed(2)}',
+              'Total: PKR ${(totalNum / 100).toStringAsFixed(2)}',
               style: Theme.of(context).textTheme.titleMedium,
             ),
           const SizedBox(height: 12),
-          if (sig != null) Text('Signature: ${sig.toString().substring(0, sig.toString().length.clamp(0, 24))}…'),
-          Text(hasPdf ? 'PDF attached (base64).' : 'No PDF in response.'),
+          if (sig != null)
+            Text(
+              'Signature: ${sig.toString().substring(0, sig.toString().length.clamp(0, 24))}…',
+            ),
+          Text(hasPdf ? 'PDF receipt included.' : 'No PDF in response.'),
           const SizedBox(height: 16),
-          SelectableText(receipt.toString()),
+          Text('Status: ${receipt['status'] ?? '—'}'),
         ],
       ),
     );

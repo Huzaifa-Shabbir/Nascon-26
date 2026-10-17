@@ -33,6 +33,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     _future = context.read<AppState>().loadScore(widget.matchId);
   }
 
+  int _sideScore(dynamic side) {
+    if (side is Map && side['score'] != null) {
+      final s = side['score'];
+      if (s is num) return s.toInt();
+    }
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -60,19 +68,32 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   children: [
                     Text(friendlyError(snap.error!), textAlign: TextAlign.center),
                     const SizedBox(height: 12),
-                    Text('${widget.home} vs ${widget.away}', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    const Text('Score not available yet. Match may still be upcoming.'),
+                    Text(
+                      '${widget.home} vs ${widget.away}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: () => setState(_reload),
+                        child: const Text('Retry'),
+                      ),
+                    ),
                   ],
                 ),
               ),
             );
           }
           final data = snap.data ?? {};
-          final homeScore = data['home_score'] ?? data['score']?['home'] ?? 0;
-          final awayScore = data['away_score'] ?? data['score']?['away'] ?? 0;
+          final homeScore = _sideScore(data['home']);
+          final awayScore = _sideScore(data['away']);
+          final homeId = (data['home'] is Map ? data['home']['team_id'] : null) ?? widget.home;
+          final awayId = (data['away'] is Map ? data['away']['team_id'] : null) ?? widget.away;
           final outcome = (data['outcome'] ?? 'pending').toString();
-          final timeline = (data['timeline'] ?? data['events'] ?? data['log'] ?? []) as List? ?? [];
+          final status = (data['status'] ?? '').toString();
+          final version = data['version'];
+          final timeline = (data['events'] is List) ? data['events'] as List : const [];
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -84,14 +105,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   child: Column(
                     children: [
                       Text(
-                        '${widget.home}  $homeScore  –  $awayScore  ${widget.away}',
+                        '$homeId  $homeScore  –  $awayScore  $awayId',
                         style: Theme.of(context).textTheme.headlineSmall,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
-                      Text('Outcome: $outcome'),
-                      if (data['match_version'] != null)
-                        Text('Version: ${data['match_version']}'),
+                      Text('Status: $status · Outcome: $outcome'),
+                      if (version != null) Text('Version: $version'),
                     ],
                   ),
                 ),
@@ -102,19 +122,38 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               if (timeline.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Text('No events yet. Scores appear after match_init / score events.'),
+                  child: Text('No events yet.'),
                 )
               else
                 ...timeline.map((e) {
                   final m = e is Map ? e : <String, dynamic>{};
-                  final type = (m['type'] ?? m['event_type'] ?? m['payload']?['event_type'] ?? 'event').toString();
-                  final id = (m['event_id'] ?? m['id'] ?? '').toString();
+                  final type = (m['type'] ?? 'event').toString();
+                  final id = (m['event_id'] ?? '').toString();
                   final seq = m['sequence'];
+                  final compensated = m['compensated'] == true;
+                  final payload = m['payload'];
+                  String detail = '';
+                  if (payload is Map) {
+                    final et = payload['event_type'];
+                    final team = payload['team_id'];
+                    if (et != null || team != null) {
+                      detail = [if (team != null) '$team', if (et != null) '$et'].join(' · ');
+                    }
+                  }
                   return ListTile(
                     minVerticalPadding: 12,
-                    leading: const Icon(Icons.sports),
-                    title: Text(type),
-                    subtitle: Text([if (id.isNotEmpty) id, if (seq != null) 'seq $seq'].join(' · ')),
+                    leading: Icon(
+                      compensated ? Icons.undo : Icons.sports,
+                      color: compensated ? Colors.orange : null,
+                    ),
+                    title: Text(compensated ? '$type (compensated)' : type),
+                    subtitle: Text(
+                      [
+                        if (id.isNotEmpty) id,
+                        if (seq != null) 'seq $seq',
+                        if (detail.isNotEmpty) detail,
+                      ].join(' · '),
+                    ),
                   );
                 }),
               const SizedBox(height: 16),
@@ -126,7 +165,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 ),
                 leading: const Icon(Icons.shopping_bag, color: Color(AppState.alphaGold)),
                 title: const Text('Pinned product'),
-                subtitle: const Text('Alpha Home Jersey (M) — PKR 4500.00'),
+                subtitle: const Text('Alpha United Home Jersey — see Store'),
               ),
             ],
           );

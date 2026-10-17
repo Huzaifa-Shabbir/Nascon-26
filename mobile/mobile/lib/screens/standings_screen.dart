@@ -13,12 +13,17 @@ class StandingsScreen extends StatefulWidget {
 
 class _StandingsScreenState extends State<StandingsScreen> {
   late Future<Map<String, dynamic>> _future;
-  static const leagueId = 'league-alpha-1';
 
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().loadStandings(leagueId);
+    _future = context.read<AppState>().loadStandings(AppState.demoLeagueId);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = context.read<AppState>().loadStandings(AppState.demoLeagueId);
+    });
   }
 
   Color? _qualColor(String? status) {
@@ -53,14 +58,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
       appBar: AppBar(
         title: const Text('Standings'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                _future = context.read<AppState>().loadStandings(leagueId);
-              });
-            },
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _reload),
         ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -73,23 +71,36 @@ class _StandingsScreenState extends State<StandingsScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(friendlyError(snap.error!), textAlign: TextAlign.center),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(friendlyError(snap.error!), textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(onPressed: _reload, child: const Text('Retry')),
+                    ),
+                  ],
+                ),
               ),
             );
           }
           final data = snap.data ?? {};
-          final table = (data['table'] ?? data['standings'] ?? data['teams'] ?? []) as List? ?? [];
+          final table = (data['table'] is List) ? data['table'] as List : const [];
           if (table.isEmpty) {
             return const Center(
-              child: Text('No standings yet. Register a league and complete matches first.'),
+              child: Text('No standings yet. Complete matches to fill the table.'),
             );
           }
           return ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              Text('League: $leagueId', style: Theme.of(context).textTheme.titleSmall),
-              if (data['resolved_by'] != null)
-                Text('Resolved by: ${data['resolved_by']}'),
+              Text(
+                'League: ${data['league_id'] ?? AppState.demoLeagueId}',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              if (data['qualification_spots'] != null)
+                Text('Qualification spots: ${data['qualification_spots']}'),
               const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -99,25 +110,28 @@ class _StandingsScreenState extends State<StandingsScreen> {
                     DataColumn(label: Text('Team')),
                     DataColumn(label: Text('Pts')),
                     DataColumn(label: Text('P')),
+                    DataColumn(label: Text('GD')),
                     DataColumn(label: Text('Qual')),
                   ],
                   rows: [
                     for (var i = 0; i < table.length; i++)
                       () {
                         final row = table[i] is Map ? table[i] as Map : {};
-                        final team = (row['team_id'] ?? row['team'] ?? row['name'] ?? 'T$i').toString();
-                        final pts = row['points'] ?? row['pts'] ?? 0;
-                        final played = row['played'] ?? row['p'] ?? 0;
-                        final qual = (row['qualification'] ?? row['status'] ?? row['qual']).toString();
+                        final team = (row['team_id'] ?? 'T$i').toString();
+                        final pts = row['points'] ?? 0;
+                        final played = row['played'] ?? 0;
+                        final diff = row['diff'] ?? 0;
+                        final qual = row['status']?.toString();
                         return DataRow(cells: [
                           DataCell(Text('${row['rank'] ?? i + 1}')),
                           DataCell(Text(team)),
                           DataCell(Text('$pts')),
                           DataCell(Text('$played')),
+                          DataCell(Text('$diff')),
                           DataCell(Text(
-                            _qualLabel(qual == 'null' ? null : qual),
+                            _qualLabel(qual),
                             style: TextStyle(
-                              color: _qualColor(qual == 'null' ? null : qual),
+                              color: _qualColor(qual),
                               fontWeight: FontWeight.w600,
                             ),
                           )),

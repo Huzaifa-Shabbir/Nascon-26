@@ -12,9 +12,9 @@ class SyncService {
     final pending = await db.pendingActions();
     if (pending.isEmpty) return null;
 
+    final deviceId = pending.first['device_id']?.toString() ?? 'device-unknown';
     final actions = pending.map((row) {
       return {
-        'device_id': row['device_id'],
         'action_id': row['action_id'],
         'type': row['type'],
         'payload': row['payload'],
@@ -23,7 +23,11 @@ class SyncService {
       };
     }).toList();
 
-    final result = await api.offlineSync({'actions': actions});
+    final result = await api.offlineSync({
+      'device_id': deviceId,
+      'actions': actions,
+    });
+
     final results = result['results'];
     if (results is List) {
       for (final r in results) {
@@ -31,12 +35,8 @@ class SyncService {
         final actionId = r['action_id']?.toString();
         if (actionId == null) continue;
         final status = r['status']?.toString() ?? 'synced';
-        // applied / duplicate / rejected all leave the queue
+        // applied / duplicate / rejected all leave the pending queue
         await db.markDone(actionId, status: status);
-      }
-    } else {
-      for (final row in pending) {
-        await db.markDone(row['action_id'] as String, status: 'synced');
       }
     }
     return result;

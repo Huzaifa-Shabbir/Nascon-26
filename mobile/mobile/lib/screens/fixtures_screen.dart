@@ -14,12 +14,17 @@ class FixturesScreen extends StatefulWidget {
 
 class _FixturesScreenState extends State<FixturesScreen> {
   late Future<List<dynamic>> _future;
-  static const leagueId = 'league-alpha-1';
 
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().loadMatches(leagueId: leagueId);
+    _future = context.read<AppState>().loadMatches(leagueId: AppState.demoLeagueId);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = context.read<AppState>().loadMatches(leagueId: AppState.demoLeagueId);
+    });
   }
 
   @override
@@ -31,11 +36,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                _future = context.read<AppState>().loadMatches(leagueId: leagueId);
-              });
-            },
+            onPressed: _reload,
           ),
         ],
       ),
@@ -49,7 +50,17 @@ class _FixturesScreenState extends State<FixturesScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(friendlyError(snap.error!), textAlign: TextAlign.center),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(friendlyError(snap.error!), textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(onPressed: _reload, child: const Text('Retry')),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -62,18 +73,25 @@ class _FixturesScreenState extends State<FixturesScreen> {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, i) {
               final m = items[i] as Map;
-              final matchId = (m['match_id'] ?? m['id'] ?? 'match-$i').toString();
-              final home = (m['home'] ?? m['home_team'] ?? '?').toString();
-              final away = (m['away'] ?? m['away_team'] ?? '?').toString();
+              final matchId = (m['match_id'] ?? '').toString();
+              final home = (m['home_team_id'] ?? m['home'] ?? '?').toString();
+              final away = (m['away_team_id'] ?? m['away'] ?? '?').toString();
               final status = (m['status'] ?? 'upcoming').toString();
+              final hs = m['home_score'];
+              final as_ = m['away_score'];
+              final scoreLine = (hs != null && as_ != null) ? ' · $hs–$as_' : '';
               return ListTile(
                 minVerticalPadding: 16,
                 title: Text('$home vs $away'),
-                subtitle: Text('$matchId · $status'),
+                subtitle: Text('$matchId · $status$scoreLine'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => MatchDetailScreen(matchId: matchId, home: home, away: away),
+                    builder: (_) => MatchDetailScreen(
+                      matchId: matchId,
+                      home: home,
+                      away: away,
+                    ),
                   ),
                 ),
               );

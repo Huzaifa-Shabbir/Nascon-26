@@ -151,4 +151,10 @@ class LocalDb {
     );
     return (r.first['c'] as int?) ?? 0;
   }
+
+  /// Drop cached profiles/fixtures/standings (e.g. on logout / tenant switch).
+  Future<void> clearCache() async {
+    final d = await db;
+    await d.delete('cache');
+  }
 }

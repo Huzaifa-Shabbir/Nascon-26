@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiException implements Exception {
-  ApiException(this.message, {this.code, this.statusCode});
+  ApiException(this.message, {this.code, this.statusCode, this.fields});
   final String message;
   final String? code;
   final int? statusCode;
+  final List<String>? fields;
 
   @override
   String toString() => message;
@@ -14,6 +15,9 @@ class ApiException implements Exception {
 
 String friendlyError(Object e) {
   if (e is ApiException) {
+    if (e.code == 'VALIDATION_ERROR' && e.fields != null && e.fields!.isNotEmpty) {
+      return 'Please check: ${e.fields!.join(', ')}';
+    }
     switch (e.code) {
       case 'OUT_OF_STOCK':
         return 'That item just sold out.';
@@ -39,6 +43,18 @@ String friendlyError(Object e) {
         return 'Player is not in that squad.';
       case 'CROSS_TENANT_TRANSFER':
         return 'Transfers across tenants are not allowed.';
+      case 'MIN_POSITION_VIOLATION':
+        return 'Moving this player would break position requirements.';
+      case 'LEAGUE_NOT_FOUND':
+        return 'That league roster scenario was not found. Configure roster first.';
+      case 'PLAYER_NOT_FOUND':
+        return 'Player not found in this roster.';
+      case 'SQUAD_NOT_FOUND':
+        return 'Squad not found.';
+      case 'MATCH_NOT_FOUND':
+        return 'Match not found.';
+      case 'MATCH_NOT_IN_PROGRESS':
+        return 'Match must be in progress before scoring.';
       case 'TIE_NOT_ALLOWED':
         return 'Match is tied and draws are not allowed.';
       case 'INNINGS_COMPLETE':
@@ -49,15 +65,26 @@ String friendlyError(Object e) {
         return 'That compensation target is not valid.';
       case 'EVENT_NOT_FOUND':
         return 'The target event was not found.';
-      case 'DUPLICATE_EVENT':
-      case 'DUPLICATE_ORDER':
-        return 'This request was already processed.';
+      case 'DUPLICATE_EVENT_ID':
+      case 'DUPLICATE_ORDER_ID':
+      case 'DUPLICATE_REQUEST_ID':
+        return 'This request was already processed with a different body.';
+      case 'LEAGUE_EXISTS':
+        return 'That league already exists.';
+      case 'NOT_FOUND':
+        return 'The requested item was not found.';
       default:
+        if (e.statusCode != null && e.statusCode! >= 500) {
+          return 'Server error. Please try again shortly.';
+        }
         return e.message.isNotEmpty ? e.message : 'Something went wrong.';
     }
   }
   final s = e.toString();
-  if (s.contains('SocketException') || s.contains('Failed host lookup') || s.contains('Connection refused')) {
+  if (s.contains('SocketException') ||
+      s.contains('Failed host lookup') ||
+      s.contains('Connection refused') ||
+      s.contains('TimeoutException')) {
     return 'Cannot reach the server. Check your connection and server URL.';
   }
   return 'Something went wrong. Please try again.';
@@ -69,8 +96,13 @@ class ApiClient {
   String baseUrl;
   String? token;
 
-  Uri _u(String path, [Map<String, String>? q]) =>
-      Uri.parse('$baseUrl$path').replace(queryParameters: q);
+  /// Called on 401 so the app can clear session.
+  void Function()? onUnauthorized;
+
+  Uri _u(String path, [Map<String, String>? q]) {
+    final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    return Uri.parse('$base$path').replace(queryParameters: q?.isEmpty == true ? null : q);
+  }
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -84,29 +116,50 @@ class ApiClient {
   }) async {
     late http.Response res;
     try {
-      res = await send().timeout(const Duration(seconds: 8));
+      res = await send().timeout(const Duration(seconds: 12));
     } catch (e) {
       throw ApiException(friendlyError(e));
     }
+
     Map<String, dynamic> body = {};
     if (res.body.isNotEmpty) {
       try {
         final decoded = jsonDecode(res.body);
-        if (decoded is Map<String, dynamic>) body = decoded;
-      } catch (_) {}
+        if (decoded is Map<String, dynamic>) {
+          body = decoded;
+        } else {
+          throw ApiException('Unexpected response format from server.', code: 'MALFORMED_RESPONSE');
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          throw ApiException('Unexpected response format from server.', code: 'MALFORMED_RESPONSE');
+        }
+      }
     }
+
     if (res.statusCode >= 200 && res.statusCode < 300) {
       if (allowEmpty && body.isEmpty) return {};
       return body;
     }
+
+    if (res.statusCode == 401) {
+      onUnauthorized?.call();
+    }
+
     final err = body['error'];
     String code = 'REQUEST_FAILED';
     String message = 'Request failed (${res.statusCode})';
+    List<String>? fields;
     if (err is Map) {
       code = (err['code'] ?? code).toString();
       message = (err['message'] ?? message).toString();
+      final details = err['details'];
+      if (details is Map && details['fields'] is List) {
+        fields = (details['fields'] as List).map((e) => e.toString()).toList();
+      }
     }
-    throw ApiException(message, code: code, statusCode: res.statusCode);
+    throw ApiException(message, code: code, statusCode: res.statusCode, fields: fields);
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -118,88 +171,33 @@ class ApiClient {
   }
 
   Future<List<dynamic>> getLeagues() async {
-    try {
-      final body = await _json(() => http.get(_u('/api/v1/leagues'), headers: _headers));
-      final list = body['leagues'] ?? body['items'] ?? body;
-      if (list is List) return list;
-    } catch (_) {}
-    return [
-      {'league_id': 'league-alpha-1', 'name': 'Alpha League 1', 'tenant_id': 'tenant-alpha'},
-      {'league_id': 'league-alpha-2', 'name': 'Alpha League 2', 'tenant_id': 'tenant-alpha'},
-      {'league_id': 'league-beta-1', 'name': 'Beta League 1', 'tenant_id': 'tenant-beta'},
-    ];
+    final body = await _json(() => http.get(_u('/api/v1/leagues'), headers: _headers));
+    final list = body['leagues'];
+    if (list is! List) {
+      throw ApiException('Unexpected leagues response.', code: 'MALFORMED_RESPONSE');
+    }
+    return list;
   }
 
-  Future<List<dynamic>> getMatches({String leagueId = 'league-alpha-1'}) async {
-    try {
-      final body = await _json(() => http.get(
-            _u('/api/v1/matches', {'league_id': leagueId}),
-            headers: _headers,
-          ));
-      final list = body['matches'] ?? body['fixtures'] ?? body['items'] ?? body;
-      if (list is List) return list;
-    } catch (_) {}
-    return [
-      {
-        'match_id': 'RR-L1-R1-M1',
-        'league_id': leagueId,
-        'home': 'club-alpha-1',
-        'away': 'club-alpha-2',
-        'status': 'upcoming',
-        'round': 1,
-      },
-      {
-        'match_id': 'RR-L1-R1-M2',
-        'league_id': leagueId,
-        'home': 'club-beta-1',
-        'away': 'club-alpha-1',
-        'status': 'upcoming',
-        'round': 1,
-      },
-    ];
+  Future<List<dynamic>> getMatches({String? leagueId}) async {
+    final q = <String, String>{};
+    if (leagueId != null && leagueId.isNotEmpty) q['league_id'] = leagueId;
+    final body = await _json(() => http.get(_u('/api/v1/matches', q), headers: _headers));
+    final list = body['matches'];
+    if (list is! List) {
+      throw ApiException('Unexpected matches response.', code: 'MALFORMED_RESPONSE');
+    }
+    return list;
   }
 
   Future<Map<String, dynamic>> getClub(String clubId) async {
-    try {
-      return await _json(() => http.get(_u('/api/v1/clubs/$clubId'), headers: _headers));
-    } catch (_) {
-      return {
-        'club_id': clubId,
-        'name': clubId == 'club-alpha-1' ? 'Alpha Club One' : clubId,
-        'tenant_id': clubId.startsWith('club-beta') ? 'tenant-beta' : 'tenant-alpha',
-        'colors': {'primary': '#0B5FFF', 'accent': '#FFB800'},
-      };
-    }
+    return _json(() => http.get(_u('/api/v1/clubs/$clubId'), headers: _headers));
   }
 
-  Future<Map<String, dynamic>> getCatalogue() async {
-    try {
-      return await _json(() => http.get(_u('/api/v1/catalogue'), headers: _headers));
-    } catch (_) {
-      return {
-        'products': [
-          {
-            'product_id': 'prod-jersey-001',
-            'name': 'Alpha Home Jersey',
-            'tenant_id': 'tenant-alpha',
-            'variants': [
-              {
-                'variant_id': 'var-jersey-001-M',
-                'size': 'M',
-                'price_minor': 450000,
-                'currency': 'PKR',
-              },
-              {
-                'variant_id': 'var-jersey-001-L',
-                'size': 'L',
-                'price_minor': 450000,
-                'currency': 'PKR',
-              },
-            ],
-          },
-        ],
-      };
-    }
+  Future<Map<String, dynamic>> getCatalogue({String? tenantId}) async {
+    final q = <String, String>{};
+    if (tenantId != null && tenantId.isNotEmpty) q['tenant_id'] = tenantId;
+    return _json(() => http.get(_u('/api/v1/catalogue', q), headers: _headers));
   }
 
   Future<Map<String, dynamic>> getStandings(String leagueId) async {
@@ -213,6 +211,22 @@ class ApiClient {
   Future<Map<String, dynamic>> postEvent(Map<String, dynamic> body) async {
     return _json(() => http.post(
           _u('/audit/v1/events'),
+          headers: _headers,
+          body: jsonEncode(body),
+        ));
+  }
+
+  Future<Map<String, dynamic>> registerLeague(Map<String, dynamic> body) async {
+    return _json(() => http.post(
+          _u('/audit/v1/leagues'),
+          headers: _headers,
+          body: jsonEncode(body),
+        ));
+  }
+
+  Future<Map<String, dynamic>> rosterSetup(Map<String, dynamic> body) async {
+    return _json(() => http.post(
+          _u('/audit/v1/roster/setup'),
           headers: _headers,
           body: jsonEncode(body),
         ));
