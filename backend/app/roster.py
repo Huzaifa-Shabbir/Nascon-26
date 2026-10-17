@@ -28,6 +28,17 @@ def _is_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def _is_date(v) -> bool:
+    """YYYY-MM-DD that is also a real calendar date (2026-13-45 is not)."""
+    if not isinstance(v, str) or not DATE_RE.match(v):
+        return False
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        return False
+    return True
+
+
 def _parse_date(s: str) -> date:
     return date.fromisoformat(s)
 
@@ -125,11 +136,11 @@ def roster_setup(body: dict | None = Body(default=None)):
         fields.append("league.transfer_window")
     else:
         op, cl = window.get("open"), window.get("close")
-        if not isinstance(op, str) or not DATE_RE.match(op):
+        if not isinstance(op, str) or not _is_date(op):
             fields.append("league.transfer_window.open")
-        if not isinstance(cl, str) or not DATE_RE.match(cl):
+        if not isinstance(cl, str) or not _is_date(cl):
             fields.append("league.transfer_window.close")
-        elif isinstance(op, str) and DATE_RE.match(op) and _parse_date(cl) < _parse_date(op):
+        elif isinstance(op, str) and _is_date(op) and _parse_date(cl) < _parse_date(op):
             fields.append("league.transfer_window.close")
 
     max_squad = league.get("max_squad_size")
@@ -171,7 +182,7 @@ def roster_setup(body: dict | None = Body(default=None)):
         if not isinstance(sq, str) or sq not in squad_ids:
             fields.append(f"players.{i}.squad_id")
         role = pl.get("role")
-        if role not in ROLES:
+        if not isinstance(role, str) or role not in ROLES:
             fields.append(f"players.{i}.role")
 
     for i, m in enumerate(live):
@@ -361,7 +372,7 @@ def roster_transfer(body: dict | None = Body(default=None)):
         fields.append("league_id")
     if not isinstance(pid, str) or not pid:
         fields.append("player_id")
-    if typ not in TRANSFER_TYPES:
+    if not isinstance(typ, str) or typ not in TRANSFER_TYPES:
         fields.append("type")
     if not isinstance(from_sq, str) or not from_sq:
         fields.append("from_squad_id")
@@ -371,12 +382,12 @@ def roster_transfer(body: dict | None = Body(default=None)):
     else:
         if not isinstance(to_sq, str) or not to_sq:
             fields.append("to_squad_id")
-    if not isinstance(eff, str) or not DATE_RE.match(eff):
+    if not isinstance(eff, str) or not _is_date(eff):
         fields.append("effective_date")
     if typ == "loan":
-        if not isinstance(loan_end, str) or not DATE_RE.match(loan_end):
+        if not isinstance(loan_end, str) or not _is_date(loan_end):
             fields.append("loan_end_date")
-        elif isinstance(eff, str) and DATE_RE.match(eff) and not (
+        elif isinstance(eff, str) and _is_date(eff) and not (
             _parse_date(loan_end) > _parse_date(eff)
         ):
             fields.append("loan_end_date")
@@ -740,7 +751,7 @@ def roster_history(
         as_of_d = _today()
         as_of_s = as_of_d.isoformat()
     else:
-        if not DATE_RE.match(as_of):
+        if not _is_date(as_of):
             raise validation_error(["as_of"])
         as_of_d = _parse_date(as_of)
         as_of_s = as_of

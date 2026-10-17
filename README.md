@@ -38,14 +38,16 @@ database you can lose: `/audit/v1/reset` wipes everything in the target DB.
 ./run_tests.sh          # pytest + per-module coverage
 ```
 
-DB-backed tests (e.g. `/audit/v1/reset`) **truncate every table**, so they run
-only when `TEST_DATABASE_URL` names a disposable database; otherwise they are
-skipped:
+DB- and Redis-backed tests **truncate data**, so they only run against
+disposable services. With Docker available, `./run_tests.sh` starts throwaway
+Postgres 16 and Redis 7 containers on free localhost ports and removes them on
+exit. To reuse your own disposable services instead:
 
 ```bash
-docker run -d --rm --name nascon-testdb -e POSTGRES_USER=t -e POSTGRES_PASSWORD=t -e POSTGRES_DB=t -p 55432:5432 postgres:16-alpine
-TEST_DATABASE_URL=postgresql://t:t@localhost:55432/t ./run_tests.sh
+TEST_DATABASE_URL=postgresql://t:t@localhost:55432/t TEST_REDIS_URL=redis://localhost:56379/0 ./run_tests.sh
 ```
+
+Without Docker or those variables, the DB/Redis tests are skipped.
 
 ## Demo accounts
 

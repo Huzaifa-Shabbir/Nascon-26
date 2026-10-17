@@ -305,7 +305,7 @@ def offline_sync(body: dict | None = Body(default=None)):
             raise validation_error([f"actions.{i}"])
         if not isinstance(act.get("action_id"), str) or not act.get("action_id"):
             raise validation_error([f"actions.{i}.action_id"])
-        if act.get("type") not in ACTION_TYPES:
+        if not isinstance(act.get("type"), str) or act.get("type") not in ACTION_TYPES:
             raise validation_error([f"actions.{i}.type"])
         if not isinstance(act.get("queued_at"), str) or not act.get("queued_at"):
             raise validation_error([f"actions.{i}.queued_at"])

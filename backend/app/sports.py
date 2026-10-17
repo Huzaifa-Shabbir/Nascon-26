@@ -48,7 +48,7 @@ def create_sport(body: dict | None = Body(default=None)):
         fields.append("sport_id")
     if not isinstance(name, str) or not (1 <= len(name) <= 80):
         fields.append("name")
-    if scoring_model not in MODELS:
+    if not isinstance(scoring_model, str) or scoring_model not in MODELS:
         fields.append("scoring_model")
     if not isinstance(periods, dict):
         fields.append("periods")
@@ -108,7 +108,7 @@ def create_sport(body: dict | None = Body(default=None)):
 
     # overtime
     policy = overtime.get("policy")
-    if policy not in OVERTIME_POLICIES:
+    if not isinstance(policy, str) or policy not in OVERTIME_POLICIES:
         fields.append("overtime.policy")
     if "duration_minutes" in overtime:
         dm = overtime.get("duration_minutes")

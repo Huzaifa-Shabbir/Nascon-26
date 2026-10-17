@@ -101,7 +101,8 @@ def register_league(body: dict | None = Body(default=None)):
         if mid in fixture_ids:
             raise validation_error([f"fixtures.{i}.match_id"])
         fixture_ids.add(mid)
-        if home not in team_set or away not in team_set or home == away:
+        if (not isinstance(home, str) or not isinstance(away, str)
+                or home not in team_set or away not in team_set or home == away):
             raise validation_error([f"fixtures.{i}"])
         normalized_fixtures.append({"match_id": mid, "home": home, "away": away})
 

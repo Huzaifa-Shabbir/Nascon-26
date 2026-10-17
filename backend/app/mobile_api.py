@@ -1,12 +1,20 @@
-"""Production read APIs for the Flutter app (not graded audit wrappers)."""
+"""Production read APIs for the Flutter app (not graded audit wrappers).
+
+Tenant isolation (FR-2.1, FR-5.1, spec 5.13): every route needs a valid JWT
+(401 otherwise). The super admin reads platform-wide; every other role reads
+only its own tenant's data. A foreign-tenant resource is 403 (never 404);
+404 is only for ids that do not exist at all. Leagues and matches without a
+tenant (registered through /audit/v1/leagues or match_init) belong to no
+tenant, so only the super admin sees them.
+"""
 from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from sqlalchemy import text
 
-from app import db
+from app import auth, db
 from app.errors import ApiError
 from app.scoring import _load_events, _load_sport, project_match
 
@@ -19,14 +27,27 @@ def _cfg(raw):
     return dict(raw or {})
 
 
+def _tenant_scope(user: dict) -> str | None:
+    """None = platform-wide (super admin); otherwise the only tenant the user may read."""
+    return None if user["role"] == "super_admin" else (user.get("tenant_id") or "")
+
+
+def _forbid_foreign(scope: str | None, tenant_id: str | None) -> None:
+    if scope is not None and tenant_id != scope:
+        raise ApiError(403, "FORBIDDEN", "Cross-tenant access is forbidden.")
+
+
 @router.get("/api/v1/leagues")
-def list_leagues():
+def list_leagues(request: Request):
+    scope = _tenant_scope(auth.require_user(request))
     with db.engine.connect() as conn:
         rows = conn.execute(
             text(
                 "SELECT league_id, tenant_id, sport_id, name, config FROM leagues "
+                "WHERE CAST(:t AS TEXT) IS NULL OR tenant_id = :t "
                 "ORDER BY league_id"
-            )
+            ),
+            {"t": scope},
         ).mappings().all()
     out = []
     for r in rows:
@@ -43,23 +64,29 @@ def list_leagues():
 
 
 @router.get("/api/v1/matches")
-def list_matches(league_id: str | None = Query(default=None)):
+def list_matches(request: Request, league_id: str | None = Query(default=None)):
+    scope = _tenant_scope(auth.require_user(request))
     with db.engine.connect() as conn:
         if league_id:
-            rows = conn.execute(
-                text(
-                    "SELECT match_id, sport_id, league_id, home_team_id, away_team_id "
-                    "FROM matches WHERE league_id = :lid ORDER BY match_id"
-                ),
+            league = conn.execute(
+                text("SELECT tenant_id FROM leagues WHERE league_id = :lid"),
                 {"lid": league_id},
-            ).mappings().all()
-        else:
-            rows = conn.execute(
-                text(
-                    "SELECT match_id, sport_id, league_id, home_team_id, away_team_id "
-                    "FROM matches ORDER BY match_id"
-                )
-            ).mappings().all()
+            ).mappings().first()
+            if league is None:
+                raise ApiError(404, "LEAGUE_NOT_FOUND", f"League {league_id} does not exist.",
+                               {"league_id": league_id})
+            _forbid_foreign(scope, league["tenant_id"])
+        # A match is visible through its league's tenant; league-less matches have none.
+        rows = conn.execute(
+            text(
+                "SELECT m.match_id, m.sport_id, m.league_id, m.home_team_id, m.away_team_id "
+                "FROM matches m LEFT JOIN leagues l ON l.league_id = m.league_id "
+                "WHERE (CAST(:lid AS TEXT) IS NULL OR m.league_id = :lid) "
+                "AND (CAST(:t AS TEXT) IS NULL OR l.tenant_id = :t) "
+                "ORDER BY m.match_id"
+            ),
+            {"lid": league_id, "t": scope},
+        ).mappings().all()
 
         matches = []
         for r in rows:
@@ -83,7 +110,8 @@ def list_matches(league_id: str | None = Query(default=None)):
 
 
 @router.get("/api/v1/clubs/{club_id}")
-def get_club(club_id: str):
+def get_club(club_id: str, request: Request):
+    scope = _tenant_scope(auth.require_user(request))
     with db.engine.connect() as conn:
         club = conn.execute(
             text(
@@ -94,6 +122,7 @@ def get_club(club_id: str):
         if club is None:
             raise ApiError(404, "NOT_FOUND", f"Club {club_id} does not exist.",
                            {"club_id": club_id})
+        _forbid_foreign(scope, club["tenant_id"])
         players = conn.execute(
             text(
                 "SELECT player_id, name, position FROM players "
@@ -122,7 +151,12 @@ def get_club(club_id: str):
 
 
 @router.get("/api/v1/catalogue")
-def catalogue(tenant_id: str | None = Query(default=None)):
+def catalogue(request: Request, tenant_id: str | None = Query(default=None)):
+    scope = _tenant_scope(auth.require_user(request))
+    if scope is not None:
+        if tenant_id is not None:
+            _forbid_foreign(scope, tenant_id)
+        tenant_id = scope
     with db.engine.connect() as conn:
         if tenant_id:
             products = conn.execute(
