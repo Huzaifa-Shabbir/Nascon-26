@@ -59,7 +59,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
           }
           return ListView.separated(
             itemCount: items.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, i) {
               final m = items[i] as Map;
               final matchId = (m['match_id'] ?? m['id'] ?? 'match-$i').toString();

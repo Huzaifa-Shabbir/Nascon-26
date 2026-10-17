@@ -80,7 +80,7 @@ class _RosterScreenState extends State<RosterScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           DropdownButtonFormField<String>(
-            value: _action,
+            initialValue: _action,
             decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder()),
             items: const [
               DropdownMenuItem(value: 'transfer', child: Text('Transfer')),
