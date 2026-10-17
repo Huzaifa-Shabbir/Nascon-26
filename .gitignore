@@ -18,8 +18,9 @@ venv/
 .coverage
 .coverage.*
 coverage.xml
-coverage.json
 htmlcov/
+# Required deliverable (see spec 9.3):
+!COVERAGE.json
 
 # Flutter / Dart
 mobile/**/.dart_tool/
