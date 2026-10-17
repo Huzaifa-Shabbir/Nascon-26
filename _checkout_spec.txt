@@ -1,0 +1,514 @@
+
+
+========== PAGE 2 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+1.1 Open-Source and Self-Hosted Requirement
+All core infrastructure must run on open-source software that the team self-hosts via Docker Compose. Proprietary
+single-vendor BaaS (Firebase, Supabase, A WS Amplify) for graded features is strictly prohibited. Payments
+must use a mock payment gateway that you build. Permitted components are listed in Section 7.
+1.2 Phase I Hard Lock and Per-T eam Cryptographic Salt
+Part I (50 points) is evaluated automatically by Python grading scripts and is permanently locked at 15:00 PKT
+today (final GitHub push deadline: 15:05:00 PKT).
+ Every event-sourced score record and checkout receipt must include a signature computed as
+signature = HMAC SHA256(DAY1 SALT, id + "|" + payload), using the unique DAY1 SALT printed on your
+team’s slip.
+ The exact byte-level recipe (meaning of id and payload, canonical JSON, encoding, output format) is in
+Section 5.3 and Appendix A. Follow it literally.
+ The scope of Part II (Day 2: 45 objective points + 15 viva points) is confidential and will be released tomorrow
+at 10:15 AM PKT.
+1.3 Submission Package and GitHub Rules
+Work is graded from your GitHub repository. It must be public (the grader clones it without credentials) and
+its URL must be registered with the volunteer at your venue desk before 11:15 AM . The repository root must
+contain:
+Path (repo root) Requirement
+docker-compose.yml Brings up the entire backend (API on host port 8080, database, cache,
+queue, object store, workers). Must forward the salt as DAY1_SALT:
+${DAY1_SALT}.
+.env.example Lists every environment variable. Must not contain your real salt.
+README.md Run instructions and the five demo accounts of Section 8.3.
+TRACEABILITY.md Maps every FR/NFR ID to source files and automated tests.
+tests/, run_tests.sh, COVERAGE.json Unit tests; one script that runs them; coverage file in the format of
+Section 9.3.
+mobile/ Mobile source code and the built app at
+mobile/release/app-release.apk (Android). iOS teams:
+see Section 8.1.
+GitHub push checkpoints. At least one commit must be pushed (GitHub push time) inside each of these
+windows: 10:45–11:45, 11:45–12:45, 12:45–13:45, and 13:45–14:45 PKT . Each missed window costs
+2 points (Section 9.4). The grader checks out the last commit pushed at or before 15:05:00 PKT; anything
+pushed later is ignored.
+2. Phase I Engineering Outcomes
+By completing Part I, teams demonstrate the ability to:
+ model a flexible, rule-driven domain (multi-sport, multi-format) in a relational schema without hard-coded
+sport logic;
+ implement and unit-test scheduling and standings algorithms (round-robin, Swiss, single and double elimina-
+tion);
+ build an append-only event-sourced scoring engine with compensating rollback events;
+ implement 5-tier Role-Based Access Control (RBAC) with strict tenant isolation;
+ deliver offline-tolerant mobile persistence with local action queueing and conflict synchronization;
+ deliver a usable, accessible mobile interface that follows basic HCI and UI principles.
+3. Functional Requirements
+Each requirement carries an ID for traceability; maintain TRACEABILITY.md mapping every ID to source files
+and automated tests.
+2
+
+========== PAGE 4 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+FR-2.3 Integrated Club Merchandise Store
+ Product catalogue: apparel, accessories, and digital items with variants (size, color), scheduled price changes,
+and discount codes.
+ Concurrency-safe inventory (NFR-3): stock tracked per variant, reserved during checkout against your
+mock payment gateway (authorization, capture, failure, refund simulation), guaranteeing zero overselling
+under concurrent purchases.
+ Order states: Pending, Paid, Packed, Shipped, Delivered, Cancelled, Refunded; each transition emits a
+structured domain event to the internal queue.
+ Server-side PDF receipt generation and embeddable product showcases on match pages (pinning a product
+updates connected clients in real time).
+3.3 Cross-Cutting Access Control
+FR-5.1 Five-Tier Role-Based Access Control
+ Five tiers: Platform Super-Admin, League Organizer, Club Manager, Player, General Viewer.
+ Scoped permissions: a League Organizer controls only their leagues; a Club Manager controls only their club;
+tenant isolation is absolute.
+ Implement RBAC via a database policy matrix or policy-as-code layer, with negative authorization tests for
+every role boundary.
+4. Non-Functional Requirements
+ID Requirement Minimum acceptance bar
+NFR-3 Concurrency correctness Last 1 unit of stock bought by 20 simultaneous buyers yields exactly 1
+successful order and 0 negative inventory (Section 5.12).
+NFR-4 Offline tolerance Mobile app caches fixtures, standings, and profiles locally (SQLite/-
+Room/Hive); offline scoring and roster actions queue locally and sync
+with conflict handling (Sections 5.14 and 8.4).
+NFR-5 Security OW ASP Mobile/API Top 10 compliance; secure token storage (Keystore/K-
+eychain); rate limiting; input validation; 5-role RBAC enforcement (Sec-
+tion 5.13).
+NFR-7 Reproducibility One command ( docker compose up -d --build) brings up the full back-
+end and seeds baseline data on a clean Linux machine (Section 5.2).
+5. Mandatory Autograder Interface (/audit/v1/*)
+The Python grading scripts evaluate your backend by calling the wrapper endpoints below on http://
+localhost:8080. Map these routes directly to your underlying domain services. Every request and response
+shape in this section is binding: field names, types, status codes, and error codes are compared literally by the
+scripts.
+4
+
+========== PAGE 5 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+5.1 Endpoint Index
+Method & path Purpose Sec.
+GET /health Readiness probe (no auth) 5.4
+POST /audit/v1/reset Wipe state and seed baseline data 5.5
+POST /audit/v1/sports Create a “mystery sport” from JSON rules 5.6
+POST /audit/v1/fixtures Generate round robin / swiss / single elim / dou-
+ble elim
+5.7
+POST /audit/v1/leagues Register a league (teams, fixtures, points, tie-break
+config)
+5.8
+POST /audit/v1/events Append a match event or compensating event (signed) 5.9
+GET /audit/v1/score/{match_id} Score projection rebuilt from the event log 5.9
+GET /audit/v1/standings/{league_id} Ordered table, H2H, clinched/eliminated 5.10
+POST /audit/v1/roster/setup Create a roster scenario (league, squads, players) 5.11
+POST /audit/v1/roster/transfer Transfer / loan / release with all rule checks 5.11
+GET /audit/v1/roster/history/{player_id} Immutable audit trail + loan auto-return 5.11
+POST /audit/v1/checkout Concurrency-safe purchase + signed PDF receipt 5.12
+GET /audit/v1/inventory/{variant_id} Current stock of a variant 5.12
+POST /audit/v1/rbac-matrix JWTs for all 5 roles + scenario ids 5.13
+/audit/v1/rbac/* (7 probe routes) Authorization probes used with those JWTs 5.13
+GET /api/v1/ping Rate-limit probe 5.13
+POST /audit/v1/offline-sync Replay queued offline actions, return conflict resolu-
+tions
+5.14
+5.2 Global Conventions and Grading Environment
+Grading environment and startup
+ The grader runs on an organizer-controlled machine: Ubuntu 22.04, 4 vCPU, 8 GB RAM, Docker Engine 24+
+with Compose v2, Python 3.11. Your stack must run within these limits.
+ The grader clones your last commit (Section 1.3), then runs from the repository root:
+DAY1_SALT=<your-salt> docker compose up -d --build. The command (including image pulls and builds)
+must finish within 10 minutes. Internet is available during this build step only; running services must not
+need it.
+ The grader polls GET /health every 2 s; it must return HTTP 200 within 120 seconds after the command
+returns. It then calls POST /audit/v1/reset before each test group.
+ No manual steps, no pre-created volumes, no host-installed software other than Docker. Failure to start =
+non-reproducible stack (penalty in Section 9.4) after one automatic retry.
+ DAY1_SALT must be read only from the environment variable at startup (never hard-coded or committed).
+5
+
+========== PAGE 6 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+Request / response rules
+T opic Rule
+Base URL / port http://localhost:8080. All bodies are JSON, UTF-8, Content-Type:
+application/json.
+Authentication /audit/v1/* routes need no Authorization header, except the RBAC probe routes
+(5.13), which require Authorization: Bearer <jwt> .
+Identifiers Strings, 1–64 chars from A-Za-z0-9_.:-. Never contain |. Case-sensitive. Grader-chosen
+ids must be stored and returned verbatim.
+Timestamps / dates Timestamps: ISO 8601 UTC, YYYY-MM-DDTHH:MM:SSZ. Dates: YYYY-MM-DD.
+Money Integers in minor units (paisa). Currency is always "PKR". 4500.00 PKR = 450000.
+Numbers Integers where stated; otherwise JSON numbers. Net run rate is rounded to 3 decimals.
+Unknown fields Ignored. Missing required fields or wrong types → 400.
+Validation order 1) malformed JSON/schema → 400; 2) referenced id does not exist → 404; 3) business
+rule violated → 409 (or 402 for payment). The first failing step wins.
+Idempotency Where a request carries a client id ( event_id, order_id, request_id, action_id),
+replaying the identical request returns the stored result (HTTP 200) and changes nothing.
+Rate limiting /audit/v1/* and /health are exempt (the grader may send 200 req/s). /api/v1/* is
+limited to 100 requests per rolling 10 s per client IP (5.13).
+Performance Every request must finish within 5 s (reset within 10 s). The 20-request checkout burst
+must fully finish within 10 s.
+Body size Bodies larger than 1 MB are rejected with 413 PAYLOAD_TOO_LARGE.
+HTTP status codes used
+Code Meaning in this contract
+200 Success for reads, and for an idempotent replay of an earlier success.
+201 A new resource/record was created or an action was applied for the first time.
+400 Malformed JSON, schema violation, bad value ( VALIDATION_ERROR and other 400 codes).
+401 Missing, malformed, tampered, expired, or alg:none token.
+402 Mock payment declined / capture failed (checkout only).
+403 Authenticated but not allowed (role or tenant/ownership boundary).
+404 A referenced id does not exist.
+409 Business-rule or state conflict (illegal transition, out of stock, squad full, . . . ).
+413 Body too large.
+429 Rate limit exceeded ( /api/v1/* only).
+Error body (all non-2xx responses)
+{
+"error": {
+"code": "OUT_OF_STOCK",
+"message": "Variant var-jersey-001-M has no stock left.",
+"details": { "variant_id": "var-jersey-001-M" }
+}
+}
+code is an UPPER SNAKE CASE string from the catalogue in Appendix B and is compared literally. message
+is free text. details is always an object (may be {}). For VALIDATION_ERROR, details.fields is an array of
+the offending field names.
+5.3 Signature Specification (HMAC) — Exact Recipe
+Used for event records ( /events, and each event inside /score) and checkout receipts ( /checkout).
+6
+
+========== PAGE 7 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+Element Definition
+Key The value of env DAY1_SALT, encoded as UTF-8 bytes (not hex-decoded, not trimmed).
+id Event: the event_id. Receipt: the order_id.
+payload The canonical JSON string of the record’s payload object (events: the request’s payload;
+receipts: receipt.payload).
+Canonical JSON Recursively sorted object keys (ascending by Unicode code point); no whitespace (separa-
+tors , and :); UTF-8; non-ASCII characters not escaped; integers without decimal point;
+true/false/null lowercase. Array order preserved.
+Message id + "|" + payload as UTF-8 bytes.
+Algorithm / output HMAC-SHA256; output = lowercase hex, 64 characters.
+The grader recomputes every signature with its copy of your salt and compares for equality. A reference
+implementation is in Appendix A.
+5.4 Health Probe
+GET /health
+Returns 200 {"status":"ok"} only when the database is reachable and baseline data is seeded. No auth.
+5.5 Reset and Baseline Data
+POST /audit/v1/reset
+Wipes all state (matches, events, leagues, rosters, orders, offline-sync records, custom sports) and re-creates the
+baseline below. Must be repeatable and leave identical state every time.
+Request (body optional)
+{ "seed": 42, "stock": { "var-jersey-001-M": 1, "var-jersey-001-L": 5 } }
+ seed: integer, optional, default 42; used for the drawing-of-lots tie-break (5.10).
+ stock: map variant_id → integer ≥ 0; defaults: M = 1, L = 5.
+Response 200
+{
+"status": "reset_complete",
+"seed": 42,
+"sports": ["football", "basketball", "cricket", "esports"],
+"tenants": ["tenant-alpha", "tenant-beta"],
+"stock": { "var-jersey-001-M": 1, "var-jersey-001-L": 5 }
+}
+Baseline data that /reset must create (exact ids)
+Item Seed content
+Tenants tenant-alpha (“Alpha Sports”), tenant-beta (“Beta Athletics”).
+Store Product prod-jersey-001 (tenant-alpha). Variants var-jersey-001-M and
+var-jersey-001-L, each price_minor = 450000, currency PKR. Discount code WELCOME10
+= 10% off subtotal.
+RBAC scenario Leagues league-alpha-1, league-alpha-2 (tenant-alpha), league-beta-1 (tenant-beta);
+clubs club-alpha-1, club-alpha-2, club-beta-1; players player-alpha-1 (club-alpha-1),
+player-alpha-2 (club-alpha-2), player-beta-1 (club-beta-1).
+Demo users The five accounts of Section 8.3, bound to the scenario above.
+Sports The four sports below, stored as ordinary data using the same schema as 5.6.
+7
+
+========== PAGE 15 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+from effective_date through loan_end_date (inclusive); parent_squad_id = the lender; the player counts
+toward the borrower’s squad size and no longer toward the lender’s. release: the player leaves the league (no
+squad).
+ Automatic return. The day after loan_end_date the player is back with the lender (role substitute).
+Because the grader cannot wait, it passes as_of to the history call (below); the return must then appear as a
+loan_return audit entry (written once, never duplicated on repeated calls).
+ In-progress match (edge case 6). If the player is in an in-progress match, the request is
+still accepted (the window is judged on effective_date, so the last window day works) with
+state:"deferred_until_match_end" and blocking_match_id; the player stays eligible for that match with
+the old squad. Otherwise state:"active", blocking_match_id:null.
+ Audit trail. Every accepted roster change appends one immutable entry. Rejected requests change nothing
+and write no entry. Idempotency by request_id (replay → 200, same body).
+T ransfer response — 201 (200 on replay)
+{ "request_id": "tr-001", "status": "accepted", "state": "active", "blocking_match_id": null,
+"registration": { "player_id": "p2", "league_id": "lg-r1", "squad_id": "sq-b", "parent_squad_id": null,
+"registration_type": "transfer", "start_date": "2026-09-30", "loan_end_date": null,
+"role": "substitute" },
+"audit_entry": { "audit_id": "au-0001", "action": "transfer", "player_id": "p2", "league_id": "lg-r1",
+"from_squad_id": "sq-a", "to_squad_id": "sq-b", "effective_date": "2026-09-30",
+"state": "active", "who": "user-77", "when": "2026-09-30T08:12:44Z",
+"why": "Tactical move" } }
+For release, registration is null. For loan, registration_type:"loan", parent_squad_id = lender,
+loan_end_date set. audit_entry.action is one of transfer, loan, release, loan_return; who =
+requested_by (or "system" for loan_return); when = server time; why = reason.
+GET /audit/v1/roster/history/{player_id}?as_of=YYYY-MM-DD
+Response 200
+{ "player_id": "p2", "as_of": "2027-01-05", "league_id": "lg-r1",
+"current_squad_id": "sq-a", "parent_squad_id": null,
+"history": [ { ...audit_entry (loan)... }, { ...audit_entry (loan_return)... } ] }
+history lists entries oldest-first and is append-only. as_of is optional (default = today’s server date);
+current_squad_id is the squad the player belongs to on that date ( null if released). Unknown player → 404
+PLAYER_NOT_FOUND.
+5.12 Checkout and Inventory
+POST /audit/v1/checkout
+The grader first calls /reset with stock for the variant, then fires 20 simultaneous checkout requests
+(Python threads released together by a barrier), each with a different order_id, buying the last unit of
+var-jersey-001-M. Exactly one must succeed.
+{
+"order_id": "ord-001",
+"customer_id": "cust-001",
+"items": [ { "variant_id": "var-jersey-001-M", "quantity": 1 } ],
+"discount_code": null,
+"payment": { "token": "tok_success" }
+}
+ order_id: required, client-chosen, unique. Replay of an identical request → 200 with the stored result (no
+second reservation). Same id, different body → 409 DUPLICATE_ORDER_ID.
+ items: 1–10 items, quantity integer 1..10, unique variant_ids. Unknown variant → 404 VARIANT_NOT_FOUND.
+ discount_code: null or a code. Only WELCOME10 is valid; unknown → 400 INVALID_DISCOUNT_CODE.
+discount_minor = floor(subtotal_minor * 10 / 100).
+ payment.token (mock gateway): tok_success (authorize + capture succeed); tok_declined (authorization
+fails); tok_capture_fail (authorization succeeds, capture fails).
+Processing order and guarantees
+1. Validate (400) → variants exist (404) → discount code (400).
+2. Atomically reserve stock for all items. If any item lacks stock, reserve nothing and return 409 OUT_OF_STOCK
+with details.variant_id. Overselling or negative stock is a failure of NFR-3.
+3. Call the mock gateway. tok_declined → release the reservation and return 402 PAYMENT_DECLINED.
+tok_capture_fail → void the authorization, release the reservation, return 402 PAYMENT_CAPTURE_FAILED.
+Released stock must be purchasable again.
+15
+
+========== PAGE 16 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+4. On success: commit the reservation (stock decreases permanently), order status paid, generate the receipt.
+Success response — 201 (200 on idempotent replay)
+{
+"order_id": "ord-001", "status": "paid", "currency": "PKR",
+"items": [ { "variant_id": "var-jersey-001-M", "quantity": 1, "unit_price_minor": 450000 } ],
+"subtotal_minor": 450000, "discount_minor": 0, "total_minor": 450000,
+"payment": { "authorization_id": "auth_1", "capture_id": "cap_1", "state": "captured" },
+"receipt": {
+"payload": { "order_id": "ord-001", "customer_id": "cust-001",
+"items": [ { "variant_id": "var-jersey-001-M", "quantity": 1, "unit_price_minor": 450000 } ],
+"subtotal_minor": 450000, "discount_minor": 0, "total_minor": 450000, "currency": "PKR",
+"paid_at": "2026-10-17T11:20:05Z" },
+"signature": "<hex>",
+"pdf_base64": "<base64 of the PDF file>"
+}
+}
+ receipt.signature = Section 5.3 with id = order_id and the canonical JSON of receipt.payload exactly
+as returned. The payload must be consistent with the order (totals add up).
+ receipt.pdf_base64 decodes to a valid PDF (starts with %PDF) generated server-side. Extracted text must
+contain the order_id and the total formatted as PKR 4500.00 (major units, two decimals, no thousands
+separator).
+ Out of stock → 409 with the error body of 5.2. Declined → 402.
+GET /audit/v1/inventory/{variant_id}
+{ "variant_id": "var-jersey-001-M", "stock": 0, "reserved": 0 }
+stock = units still available for purchase. reserved = units held by in-flight checkouts; it must be 0 once all
+requests have returned. After the burst: exactly one 201, nineteen 409, stock = 0 (never negative). The domain
+event for the order’s status change must be emitted to your internal queue (not graded by script).
+5.13 RBAC, Probe Routes and Security
+POST /audit/v1/rbac-matrix
+No body, no auth. Response 200
+{
+"tokens": { "super_admin": "<jwt>", "league_organizer": "<jwt>", "club_manager": "<jwt>",
+"player": "<jwt>", "viewer": "<jwt>" },
+"context": { "tenant_id": "tenant-alpha", "foreign_tenant_id": "tenant-beta",
+"own_league_id": "league-alpha-1", "other_league_id": "league-alpha-2",
+"foreign_league_id": "league-beta-1",
+"own_club_id": "club-alpha-1", "other_club_id": "club-alpha-2", "foreign_club_id": "club-beta-1",
+"own_player_id": "player-alpha-1", "other_player_id": "player-alpha-2",
+"foreign_player_id": "player-beta-1" }
+}
+ Tokens are JWTs valid for at least 1 hour, sent as Authorization: Bearer <jwt> . All non-super-admin
+tokens belong to tenant-alpha. The league organizer owns only league-alpha-1; the club manager owns
+only club-alpha-1; the player is player-alpha-1; the viewer has read-only access inside tenant-alpha; the
+super admin is platform-wide. The ids are the seeded ids of Section 5.5.
+ JWT claim names are your choice (the grader treats tokens as opaque). The signature must be verified; tokens
+with alg: none , a tampered signature, or an expired time must be rejected with 401.
+Probe routes. They only authorize; they perform no mutation and do not validate the body. Allowed →
+200 {"authorized":true}. Denied → 403 with the standard error body ( code = FORBIDDEN). Missing/invalid
+token → 401 (UNAUTHENTICATED). The grader sends an empty body {} on POST/PATCH.
+# Probe route Path variable
+P1 POST /audit/v1/rbac/tenants —
+P2 POST /audit/v1/rbac/leagues/{league_id}/fixtures league
+P3 POST /audit/v1/rbac/clubs/{club_id}/roster club
+P4 POST /audit/v1/rbac/clubs/{club_id}/products club
+P5 PATCH /audit/v1/rbac/players/{player_id} player
+P6 GET /audit/v1/rbac/clubs/{club_id} club
+P7 GET /audit/v1/rbac/platform/config —
+Expected matrix (A = allowed → 200; D = denied → exactly 403)
+16
+
+========== PAGE 19 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+Category Approved open-source software
+Database, cache & storage PostgreSQL 16, Redis 7, MinIO
+Auth & message queues Custom JWT / Keycloak / Ory Kratos; RabbitMQ / Redis Streams / NATS /
+BullMQ / Celery
+PDF generation WeasyPrint, wkhtmltopdf, Puppeteer
+Testing & load probes pytest, JUnit, TestNG, grafana/k6
+Third-party fixture-generation libraries and managed BaaS products are prohibited. Web frameworks, ORMs,
+JWT libraries, and PDF libraries are fine.
+8. Mobile Application Requirements and Judging
+8.1 Platform and Delivery
+ Android (recommended): provide mobile/release/app-release.apk, installable on Android 10 (API
+29) or newer. iOS teams must bring their own device or simulator with the app already installed; the judging
+slot is the same.
+ The app talks to the backend on the team laptop (docker compose running). The server address must be
+changeable inside the app (settings screen or build config): the emulator uses 10.0.2.2:8080, a phone uses
+the laptop’s LAN IP.
+ Secure token storage is mandatory (Android Keystore / iOS Keychain).
+8.2 Required Screens
+Screen Must show
+Login Email + password; role-aware home after login.
+Fixtures List of matches with status and time; tap to open a match.
+Match detail Live score (updates in real time), event timeline, pinned product showcase.
+Standings Points table for a league with qualification status.
+Club profile Club info, roster, staff, home venue.
+Store Catalogue, variant picker, cart, checkout with the mock gateway, receipt view/download.
+Roster management For Club Manager: add / transfer / loan / release a player.
+Scoring entry For League Organizer: append a score event and a compensating event.
+Sync status Always-visible online / offline / syncing indicator and the pending-action queue.
+8.3 Demo Accounts
+Must exist after every startup and every /reset.
+Role Email Password
+Platform Super-Admin admin@nascon.test Nascon@26
+League Organizer (owns league-alpha-1) organizer@nascon.test Nascon@26
+Club Manager (owns club-alpha-1) manager@nascon.test Nascon@26
+Player (player-alpha-1) player@nascon.test Nascon@26
+General Viewer viewer@nascon.test Nascon@26
+8.4 Offline T olerance (NFR-4) — What the Desk Check Does
+1. With the backend reachable, the judge opens Fixtures, Standings, and a Club profile. The app must cache
+them in a local database (SQLite / Room / Hive).
+2. The judge switches the phone to airplane mode. Cached screens must still open and an “Offline” indicator
+must show.
+3. While offline the judge performs one scoring action (as Organizer) and one roster action (as Manager). Each
+must be stored in a persistent local queue, appear as “pending” in the UI, and use the action format of 5.14.
+4. The judge force-closes and reopens the app while still offline. The pending actions must still be there.
+5. The judge turns the network on. The app must sync automatically (or via an obvious Sync button), show
+19
+
+========== PAGE 20 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+per-action results (applied / rejected + reason), and clear the queue. Rejected actions must be explained in
+plain language.
+8.5 Judging Procedure
+ From 15:15 PKT judges visit each team at its venue desk. Each team gets one fixed 10-minute slot. The
+team must have the backend running and the app installed.
+ All judges use the same three tasks (Section 8.6). Judges do not help the team during the slot.
+ A team that is not ready at its slot is moved to the end of the queue once; if still not ready, the desk-check
+parts (offline and UI/HCI) score 0.
+8.6 What the UI/HCI Judges Look At
+Judges run the same three tasks on every team’s app: (A) find a league’s standings and open one match; (B)
+buy a merchandise item with the mock payment and open the receipt; (C) as Club Manager, perform a roster
+action — then repeat one action in airplane mode and sync. They judge five areas:
+Area What we check
+1. Navigation & ease of
+use
+A new user can find Fixtures, Standings, Store, and Profile without help. Common
+tasks take few taps. Back/undo always works. No dead ends.
+2. Visual consistency &
+hierarchy
+Same colors, fonts, spacing, and button styles on every screen. The most important
+things (score, Buy button) stand out. The tenant’s logo and colors are applied.
+3. Feedback & error
+handling
+The app always tells the user what is happening: loading indicators, success messages,
+clear plain-language errors (never raw codes like “Error 500”), visible Online / Offline
+/ Syncing status, confirmation before risky actions.
+4. Readability & acces-
+sibility
+Text is large enough, contrast is good, tap targets are comfortably big (about 48 dp),
+icons have labels or descriptions, meaning is never shown by color alone.
+5. Right screen for the
+right role
+Each role sees only what it can use. Empty lists show a helpful message (“No matches
+yet”). Nothing breaks or overflows on a small phone (360 ×640 dp) or after rotating.
+9. Phase I Scoring and Rubric (50 Points)
+9.1 Point Groups
+Phase I graded component Max V erification method
+Backend Platform — six areas, listed
+below
+36 Python grading scripts on the grader machine
+Offline Mobile Persistence & Sync
+Queue
+4 Python script ( /offline-sync) + on-device desk check (8.4)
+Mobile UI & HCI Principles — five ar-
+eas in 8.6
+10 Judge panel, same three tasks for every team
+Total Phase I score (permanently
+locked at 15:00 PKT)
+50
+The six backend areas (together worth 36 points):
+ Fixture algorithms ×4 (round-robin, Swiss, single elimination, double elimination) against hidden vectors
+ Event-sourced scoring engine (mystery-sport configuration, compensating-event rollback)
+ Standings engine (3-way H2H mini-league, differentials, clinched / eliminated status)
+ Store concurrency (20 simultaneous buyers on the last unit of stock, PDF receipt)
+ Club, roster, transfer-window, and loan rules (hidden conflict and audit-trail vectors)
+ RBAC 5-role negative matrix, tenant isolation, and API security (boundary probes)
+9.2 Scoring F unction
+For every backend area worth P points, tested against |V | ≥40 hidden vectors of which n pass:
+S = 0 .9 P n|V | + 0 .1 P unit-test coverage of that area ≥ 85%
+ A vector passes only if every assertion in it holds (status code, error code, every compared field, signatures).
+20
+
+========== PAGE 22 ==========
+NaSCon ’26 — App Dev Competition Part I Specification
+HTTP Code When
+400 VALIDATION_ERROR Schema/type/range problem (details.fields),
+bad dates, bad limits.
+400 UNKNOWN_EVENT_TYPE score event_type not defined in the sport.
+400 INVALID_DISCOUNT_CODE Unknown discount code.
+401 UNAUTHENTICATED Missing / invalid / tampered / expired /alg:none
+token.
+402 PAYMENT_DECLINED, PAYMENT_CAPTURE_FAILED Mock gateway failure.
+403 FORBIDDEN Role or tenant/ownership boundary.
+404 SPORT_NOT_FOUND, MATCH_NOT_FOUND,
+LEAGUE_NOT_FOUND, EVENT_NOT_FOUND,
+PLAYER_NOT_FOUND, SQUAD_NOT_FOUND,
+VARIANT_NOT_FOUND
+Referenced id does not exist.
+409 SPORT_EXISTS, LEAGUE_EXISTS, MATCH_EXISTS Id already used.
+409 DUPLICATE_EVENT_ID, DUPLICATE_ORDER_ID Same id re-used with a different body.
+409 ILLEGAL_TRANSITION, MATCH_NOT_IN_PROGRESS,
+TIE_NOT_ALLOWED
+Match state-machine violations.
+409 INNINGS_COMPLETE, SERIES_ALREADY_DECIDED Config-driven scoring limits.
+409 INVALID_COMPENSATION Target already compensated, wrong type, or other
+match.
+409 NO_VALID_PAIRING Swiss: no rematch-free pairing exists.
+409 OUT_OF_STOCK Not enough stock.
+409 CROSS_TENANT_TRANSFER, NOT_IN_SQUAD,
+TRANSFER_WINDOW_CLOSED, PLAYER_ON_LOAN,
+SQUAD_FULL, MIN_POSITION_VIOLATION
+Roster rules (checked in the order of 5.11).
+— INVALID_BASE_VERSION Only inside an offline-sync per-action result (5.14).
+413 PAYLOAD_TOO_LARGE Body over 1 MB.
+429 RATE_LIMITED /api/v1/* limit exceeded.
+C. Pre-Submission Checklist
+ DAY1_SALT=<salt> docker compose up -d --build works on a clean machine; /health is 200 in under 2
+minutes.
+ POST /audit/v1/reset twice in a row leaves identical data; the 5 demo accounts and all seed ids exist.
+ Every response matches the field names in Section 5 (compare your JSON with the examples character by
+character).
+ Signatures verified against Appendix A test vector 1 using your own salt logic.
+ 20 parallel checkouts on stock 1 → one 201, nineteen 409, stock 0, reserved 0.
+ /audit/v1/* is not rate limited; /api/v1/ping is.
+ COVERAGE.json, TRACEABILITY.md, README.md, .env.example, and mobile/release/app-release.apk are
+committed and pushed.
+ Last commit pushed before 15:05:00 PKT.
+If your code works on the first try, check again. It’s probably the wrong problem.
+Understanding The Problem Is Also Part Of The Problem.
+22

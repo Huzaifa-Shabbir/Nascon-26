@@ -3,8 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from starlette.concurrency import run_in_threadpool
 
-from app import reset, seed
+from app import auth, rbac, reset, seed
 from app.errors import error_response, register_handlers
+from app.rate_limit import RateLimitMiddleware
 
 MAX_BODY_BYTES = 1024 * 1024
 
@@ -18,7 +19,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="NaSCon '26 League Platform", lifespan=lifespan)
 register_handlers(app)
+app.add_middleware(RateLimitMiddleware)
 app.include_router(reset.router)
+app.include_router(auth.router)
+app.include_router(rbac.router)
 
 
 @app.middleware("http")
@@ -44,5 +48,5 @@ def health():
 
 @app.get("/api/v1/ping")
 def ping():
-    # TODO(security stage): 100 req / rolling 10 s per client IP -> 429 (spec 5.13).
+    # Rate-limited by RateLimitMiddleware (100 req / rolling 10 s per client IP).
     return {"pong": True}
